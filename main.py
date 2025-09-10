@@ -22,8 +22,7 @@ import uuid
 
 # Load .env variables
 load_dotenv()
-os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
-
+openai.api_key = os.getenv("OPENAI_API_KEY")
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -36,65 +35,56 @@ st.title("🎥 YouTube Video Summarizer & Chatbot")
 # Enhanced styling with audio player customization
 st.markdown("""
 <style>
-    .stApp {
-        background-color: #0e1117;
-    }
-    .question-box {
-        background-color: #262730;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        border-left: 3px solid #4CAF50;
-        margin: 0.5rem 0;
-    }
-    .answer-box {
-        background-color: #1e1e1e;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        border-left: 3px solid #2196F3;
-        margin: 0.5rem 0;
-    }
-    .audio-controls {
-        background-color: #2d2d30;
-        padding: 0.8rem;
-        border-radius: 0.5rem;
-        margin: 0.5rem 0;
-        border: 1px solid #404040;
-    }
-    .audio-player {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        margin: 0.5rem 0;
-    }
-    .play-button {
-        background: linear-gradient(45deg, #4CAF50, #45a049);
-        border: none;
+    .main-header {
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        padding: 2rem;
+        border-radius: 10px;
+        margin-bottom: 2rem;
+        text-align: center;
         color: white;
-        padding: 8px 16px;
-        border-radius: 20px;
-        cursor: pointer;
-        font-size: 14px;
-        transition: all 0.3s;
-        display: flex;
-        align-items: center;
-        gap: 5px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     }
-    .play-button:hover {
-        background: linear-gradient(45deg, #45a049, #4CAF50);
-        transform: translateY(-1px);
+    .feature-card {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        margin-bottom: 1rem;
+        border-left: 4px solid #667eea;
+        transition: transform 0.3s ease;
     }
-    .voice-selector {
-        background-color: #3d3d40;
-        border: 1px solid #555;
+    .feature-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    }
+    .metric-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 1rem;
+        border-radius: 8px;
         color: white;
-        padding: 5px 10px;
-        border-radius: 5px;
-        font-size: 12px;
+        text-align: center;
+        margin: 0.5rem 0;
     }
-    .audio-status {
-        font-size: 12px;
-        color: #888;
-        margin-left: 10px;
+    .chat-message {
+        padding: 1rem;
+        margin: 0.5rem 0;
+        border-radius: 10px;
+        max-width: 80%;
+    }
+    .user-message {
+        background: #e3f2fd;
+        margin-left: auto;
+        text-align: right;
+    }
+    .assistant-message {
+        background: #f5f5f5;
+        margin-right: auto;
+    }
+    .sidebar-content {
+        background: #f8f9fa;
+        padding: 1rem;
+        border-radius: 8px;
+        margin-bottom: 1rem;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -162,23 +152,34 @@ if "audio_cache" not in st.session_state:
 def validate_video(video_id):
     """Check if video is accessible and has transcripts"""
     try:
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-        available = list(transcript_list)
-        
-        transcript_info = []
-        for t in available:
-            transcript_info.append({
-                'language': t.language,
-                'language_code': t.language_code,
-                'is_generated': t.is_generated,
-                'is_translatable': t.is_translatable
-            })
-        
-        return {
-            'accessible': True,
-            'transcript_count': len(available),
-            'transcripts': transcript_info
-        }
+        if hasattr(YouTubeTranscriptApi, "list_transcripts"):
+            # Newer versions
+            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+            available = list(transcript_list)
+            
+            transcript_info = []
+            for t in available:
+                transcript_info.append({
+                    'language': t.language,
+                    'language_code': t.language_code,
+                    'is_generated': getattr(t, "is_generated", False),
+                    'is_translatable': getattr(t, "is_translatable", False)
+                })
+            
+            return {
+                'accessible': True,
+                'transcript_count': len(available),
+                'transcripts': transcript_info
+            }
+        else:
+            # Older versions (no list_transcripts)
+            transcript_data = YouTubeTranscriptApi.get_transcript(video_id, languages=['en'])
+            return {
+                'accessible': True,
+                'transcript_count': 1,
+                'transcripts': [{'language': 'English', 'language_code': 'en',
+                                'is_generated': False, 'is_translatable': False}]
+            }
     except TranscriptsDisabled:
         return {'accessible': False, 'error': 'Transcripts disabled'}
     except NoTranscriptFound:
